@@ -1,0 +1,3 @@
+[build]
+# Avoid many concurrent linker/debug outputs on memory-constrained Windows hosts.
+jobs = 2

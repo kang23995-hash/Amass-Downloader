@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = ["crates/rd-engine", "crates/rd-cli", "crates/amass"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "http2", "system-proxy"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sha2 = "0.10"
+blake3 = "1"
+hex = "0.4"
+tokio-util = "0.7"
+url = "2"
+percent-encoding = "2"
+futures-util = "0.3"
+bytes = "1"
+rd-engine = { path = "crates/rd-engine" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# Keep local development/test artifacts small; release optimization is unchanged.
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

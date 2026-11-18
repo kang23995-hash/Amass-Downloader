@@ -1,0 +1,15 @@
+[package]
+name = "amass"
+description = "Amass terminal download workspace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rd-engine.workspace = true
+tokio.workspace = true
+url.workspace = true
+ratatui = "0.29"
+crossterm = "0.28"
+unicode-width = "0.2"
+serde_json = "1"
