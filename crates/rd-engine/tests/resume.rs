@@ -217,7 +217,12 @@ async fn resume_respects_reduced_connection_cap() {
     let data = pattern_data(64 * 1024 * 1024);
     let mut behavior = Behavior::new(data.clone());
     behavior.chunk_size = 16 * 1024;
-    behavior.chunk_delay = Duration::from_millis(10);
+    // Throttle the first phase: 64 connections on loopback would otherwise
+    // finish 64 MB in well under a second, and under CI scheduling the task can
+    // reach Completed before the test manages to pause it. At 4 MB/s the
+    // transfer needs ~16 s, so pausing after 512 KB is deterministic, and the
+    // resume phase lifts the cap again.
+    behavior.total_bps = Some(4 * 1024 * 1024);
     let server = TestServer::start(behavior).await;
     let mut cfg = test_config(dir.path());
     cfg.max_connections_per_task = 64;
@@ -229,6 +234,7 @@ async fn resume_respects_reduced_connection_cap() {
     engine.pause_task(id).await.unwrap();
     engine.shutdown().await.unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
+    server.set_speed(u64::MAX / 8);
     cfg.max_connections_per_task = 4;
     let engine = open_engine(cfg).await;
     engine.resume_task(id).await.unwrap();

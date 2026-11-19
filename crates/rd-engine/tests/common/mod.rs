@@ -7,7 +7,7 @@ use std::convert::Infallible;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -136,7 +136,9 @@ pub struct State {
 pub struct BandwidthBucket {
     start: Instant,
     served: Arc<Mutex<u64>>,
-    bps: u64,
+    /// Rate is adjustable at runtime so a test can slow a phase down and then
+    /// let a later phase run at full loopback speed.
+    bps: Arc<AtomicU64>,
 }
 
 impl BandwidthBucket {
@@ -144,8 +146,12 @@ impl BandwidthBucket {
         Self {
             start: Instant::now(),
             served: Arc::new(Mutex::new(0)),
-            bps: bps.max(1),
+            bps: Arc::new(AtomicU64::new(bps.max(1))),
         }
+    }
+
+    fn set_bps(&self, bps: u64) {
+        self.bps.store(bps.max(1), Ordering::SeqCst);
     }
 
     async fn take(&self, n: u64) {
@@ -155,7 +161,8 @@ impl BandwidthBucket {
             *served += n;
             pos
         };
-        let target = self.start + Duration::from_nanos(pos * 1_000_000_000 / self.bps);
+        let target = self.start
+            + Duration::from_nanos(pos * 1_000_000_000 / self.bps.load(Ordering::SeqCst));
         let now = Instant::now();
         if target > now {
             tokio::time::sleep(target - now).await;
@@ -254,6 +261,14 @@ impl TestServer {
 
     pub fn set_behavior(&self, behavior: Behavior) {
         *self.state.behavior.lock().unwrap() = behavior;
+    }
+
+    /// Retune the aggregate throughput cap without restarting the server.
+    /// Pass `None`-like very high values to lift the cap entirely.
+    pub fn set_speed(&self, bps: u64) {
+        if let Some(bucket) = &self.state.bucket {
+            bucket.set_bps(bps);
+        }
     }
 
     pub fn data_get_count(&self) -> usize {
