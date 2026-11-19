@@ -33,6 +33,7 @@ fn fraction(n: u64, total: Option<u64>) -> f64 {
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     app.hits.clear();
+    app.remove_hit = None;
     f.render_widget(Block::default().style(style(TEXT).bg(BG)), area);
     if area.width < 64 || area.height < 22 {
         f.render_widget(
@@ -122,6 +123,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             stats[i],
         );
     }
+    let actions = Layout::horizontal([Constraint::Min(0), Constraint::Length(20)]).split(rows[2]);
     let labels = [" 全部 ", " 进行中 ", " 已完成 "];
     f.render_widget(
         Paragraph::new(Line::from(
@@ -143,8 +145,22 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 })
                 .collect::<Vec<_>>(),
         )),
-        rows[2],
+        actions[0],
     );
+    let can_remove = app.selected_task().is_some();
+    f.render_widget(
+        Paragraph::new(" 删除记录 D / Del ")
+            .alignment(Alignment::Right)
+            .style(if can_remove {
+                style(TEXT).bg(RED)
+            } else {
+                style(MUTED)
+            }),
+        Rect::new(actions[1].x, actions[1].y, actions[1].width, 1),
+    );
+    if can_remove {
+        app.remove_hit = Some(Rect::new(actions[1].x, actions[1].y, actions[1].width, 1));
+    }
     let body = if area.width >= 110 {
         Layout::horizontal([Constraint::Min(54), Constraint::Length(34)])
             .spacing(2)
@@ -252,7 +268,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Paragraph::new(vec![
             Line::from(Span::styled(safe(&app.notice), style(RED))),
             Line::from(Span::styled(
-                "N 新建  ↑↓ 选择  空格 暂停/恢复  Tab 分类  O 目录  P 网络  ? 帮助  Q 退出",
+                "N 新建  ↑↓ 选择  空格 暂停/恢复  D 删除  Tab 分类  O 目录  P 网络  ? 帮助  Q 退出",
                 style(MUTED),
             )),
         ]),
@@ -354,6 +370,7 @@ fn modal(f: &mut Frame, app: &App, dialog: &Dialog, area: Rect) {
     let title = match dialog {
         Dialog::New(_) => "新建下载",
         Dialog::Help => "快捷键",
+        Dialog::Remove(_) => "删除下载记录",
         _ => "确认操作",
     };
     let border = block(title).border_style(style(RED));
@@ -376,8 +393,13 @@ fn modal(f: &mut Frame, app: &App, dialog: &Dialog, area: Rect) {
             let hint = form.error.clone().unwrap_or_else(|| format!("网络：{mode} · 在主页面按 P 切换"));
             f.render_widget(Paragraph::new(hint).style(style(if form.error.is_some() { RED } else { MUTED })),fields[6]);
         }
-        Dialog::Help=>f.render_widget(Paragraph::new("\n N             新建下载（支持终端粘贴链接）\n ↑ ↓ / J K     选择任务\n 空格 / Enter  暂停、恢复；已完成则打开目录\n Tab           全部 / 进行中 / 已完成\n O             打开保存目录\n X             取消任务（需确认）\n D             移除任务记录（需确认，保留成品）\n P             切换直连 / 系统代理（先暂停任务）\n Q / Ctrl+C    保存并退出，下载任务会暂停\n\n 保存位置与网络模式会记住。\n 按 Esc 返回").style(style(TEXT)),inner),
-        _=>f.render_widget(Paragraph::new("\n  未完成的数据将被删除，已完成的文件保留。\n  确定继续吗？\n\n  Enter / Y 确认          Esc / N 返回").style(style(TEXT)),inner),
+        Dialog::Help=>f.render_widget(Paragraph::new("\n N             新建下载（支持终端粘贴链接）\n ↑ ↓ / J K     选择任务\n 空格 / Enter  暂停、恢复；已完成则打开目录\n Tab           全部 / 进行中 / 已完成\n O             打开保存目录\n X             取消任务（需确认）\n D / Delete    删除下载记录（需确认，保留已完成文件）\n P             切换直连 / 系统代理（先暂停任务）\n Q / Ctrl+C    保存并退出，下载任务会暂停\n\n 保存位置与网络模式会记住。\n 按 Esc 返回").style(style(TEXT)),inner),
+        Dialog::Remove(id) => {
+            let name = app.tasks.iter().find(|t| t.id == *id)
+                .map(|t| safe(&t.file_name)).unwrap_or_else(|| format!("任务 #{id}"));
+            f.render_widget(Paragraph::new(format!("\n  删除记录：{name}\n  已完成的文件保留在磁盘上。\n  未完成的任务将停止，临时数据会被清理。\n\n  Enter / Y 确认          Esc / N 返回")).style(style(TEXT)), inner);
+        }
+        _=>f.render_widget(Paragraph::new("\n  取消此任务并清理未完成的临时数据。\n  任务记录仍保留在列表中。\n\n  Enter / Y 确认          Esc / N 返回").style(style(TEXT)),inner),
     }
 }
 

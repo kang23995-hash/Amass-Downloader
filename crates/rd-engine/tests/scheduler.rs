@@ -152,3 +152,28 @@ async fn remove_task_lifecycle() {
     assert!(engine.get_task(id).await.is_err(), "task record gone");
     engine.shutdown().await.unwrap();
 }
+
+/// UI removal keeps the completed file and persists removal across restarts.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn remove_record_keeps_file_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = pattern_data(16 * 1024);
+    let server = TestServer::start(Behavior::new(data.clone())).await;
+    let config = test_config(dir.path());
+    let engine = open_engine(config.clone()).await;
+    let id = engine
+        .add_task(AddTaskRequest::new(server.url("/keep.bin")))
+        .await
+        .unwrap();
+    let done = wait_completed(&engine, id).await;
+    engine.remove_task(id, false).await.unwrap();
+    assert!(engine.list_tasks().await.unwrap().is_empty());
+    assert_eq!(read_file(&done.file_path), data.to_vec());
+    engine.shutdown().await.unwrap();
+    drop(engine);
+
+    let engine = open_engine(config).await;
+    assert!(engine.list_tasks().await.unwrap().is_empty());
+    assert_eq!(read_file(&done.file_path), data.to_vec());
+    engine.shutdown().await.unwrap();
+}

@@ -128,6 +128,7 @@ pub struct App {
     pub config: EngineConfig,
     pub config_path: PathBuf,
     pub hits: Vec<(ratatui::layout::Rect, u64)>,
+    pub remove_hit: Option<ratatui::layout::Rect>,
 }
 impl App {
     pub fn new(config: EngineConfig, config_path: PathBuf) -> Self {
@@ -141,6 +142,7 @@ impl App {
             config,
             config_path,
             hits: vec![],
+            remove_hit: None,
         }
     }
     pub fn visible(&self) -> Vec<&TaskInfo> {
@@ -155,6 +157,11 @@ impl App {
     }
     pub fn selected_task(&self) -> Option<&TaskInfo> {
         self.visible().get(self.selected).copied()
+    }
+    pub fn confirm_remove(&mut self) {
+        if let Some(t) = self.selected_task() {
+            self.dialog = Some(Dialog::Remove(t.id));
+        }
     }
     pub fn speed(&self) -> u64 {
         self.tasks
@@ -273,8 +280,10 @@ impl App {
                         }
                         if matches!(dialog, Dialog::Remove(_)) {
                             engine.remove_task(id, false).await?;
+                            self.notice = "下载记录已删除；已完成的文件保留在磁盘上".into();
+                        } else {
+                            self.notice = "任务已取消，未完成的临时数据已清理".into();
                         }
-                        self.notice = "操作完成；已完成的文件仍保留在磁盘上".into();
                     } else if !matches!(key.code, KeyCode::Esc | KeyCode::Char('n')) {
                         self.dialog = Some(dialog);
                     }
@@ -303,11 +312,7 @@ impl App {
             }
             KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('r') => self.toggle(engine).await?,
             KeyCode::Char('o') => self.open_folder()?,
-            KeyCode::Char('d') => {
-                if let Some(t) = self.selected_task() {
-                    self.dialog = Some(Dialog::Remove(t.id));
-                }
-            }
+            KeyCode::Char('d') | KeyCode::Delete => self.confirm_remove(),
             KeyCode::Char('x') => {
                 if let Some(t) = self.selected_task() {
                     if t.state != TaskState::Completed {

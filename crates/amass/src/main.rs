@@ -154,7 +154,9 @@ async fn interactive(app: &mut App, engine: &mut Engine) -> Result<()> {
                             MouseEventKind::ScrollDown=>app.selected=(app.selected+1).min(app.visible().len().saturating_sub(1)),
                             MouseEventKind::ScrollUp=>app.selected=app.selected.saturating_sub(1),
                             MouseEventKind::Down(MouseButton::Left)=>{
-                                if let Some((_,id))=app.hits.iter().find(|(r,_)|r.contains((mouse.column,mouse.row).into())){
+                                if app.remove_hit.is_some_and(|r|r.contains((mouse.column,mouse.row).into())) {
+                                    app.confirm_remove();
+                                } else if let Some((_,id))=app.hits.iter().find(|(r,_)|r.contains((mouse.column,mouse.row).into())){
                                     let id=*id;if id==u64::MAX{app.dialog=Some(Dialog::New(Form::new(&app.config.download_dir)));}
                                     else if let Some(pos)=app.visible().iter().position(|t|t.id==id){app.selected=pos;}
                                 }
